@@ -12,7 +12,7 @@ DEFAULTS_FILE = "~/.my.cnf"
 DEFAULTS_GROUP = "client"
 
 
-def args():
+def mqm_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--hosts', required=True,
                         help=("Comma separated list of host:port"
@@ -28,36 +28,36 @@ def args():
         sys.exit("I cannot read {}".format(args.defaults_file))
 
 
-def query_kwargs_list(args=args()):
+def mqm_cfg(args=mqm_args()):
     """Each SQL statement, split by ';', is treated as a top level iterator.
     We then iterate over each dict."""
-    all_sql_queries = []
+    cfg = []
     host_list = list([j.split(':') for j in args.hosts.split(',')])
     sql = args.sql[:-1] if args.sql.endswith(";") else args.sql
     for s in sql.split(';'):
-        query_kwargs = []
+        query_cfg = []
         for i in host_list:
             hostname = i[0]
             if len(i) == 1:
                 port = DEFAULT_MARIADB_PORT
             else:
                 port = int(i[1])
-            query_kwargs.append({'sql': s,
-                'max_rows': int(args.max_rows),
-                'hostname': hostname,
-                'port': port,
-                'defaults_file': args.defaults_file,
-                'defaults_group': args.defaults_group})
-        all_sql_queries.append(query_kwargs)
-    return all_sql_queries
+            query_cfg.append((s,
+                              int(args.max_rows),
+                              hostname,
+                              port,
+                              args.defaults_file,
+                              args.defaults_group))
+        cfg.append(query_cfg)
+    return cfg
 
 
 def query(sql,
-        max_rows,
-        hostname,
-        port,
-        defaults_file=DEFAULTS_FILE,
-        defaults_group=DEFAULTS_GROUP):
+          max_rows,
+          hostname,
+          port: int,
+          defaults_file=DEFAULTS_FILE,
+          defaults_group=DEFAULTS_GROUP):
     db = pymysql.connect(host=hostname,
                          port=port,
                          read_default_file=defaults_file,
@@ -78,8 +78,9 @@ def query(sql,
     if not rows:
         rows = ("", )
 
-    title = "{hostname}:{port}".format(hostname, port)
-    headers = (str(i[0]) for i in desc)
+    title = "{hostname}:{port}".format(hostname=hostname,
+            port=port)
+    headers = list([str(i[0]) for i in desc])
     return (title, headers, rows)
 
 
@@ -94,18 +95,17 @@ def print_table(title, headers, rows):
     print(t)
 
 
-def query_pool(queries):
+def query_pool(cfg):
     with mp.Pool() as pool:
-        r = pool.map(query, queries)
-    print(r)
-    return results
+        r = pool.starmap(query, cfg)
+    for t in r:
+        print_table(*t)
 
 
-def query_all(all_sql_queries=query_kwargs_list()):
-    for q in all_sql_queries:
-        query_pool(queries=q)
+def mqm_query(cfg=mqm_cfg()):
+    for i in cfg:
+        query_pool(cfg=i)
 
 
 if __name__ == "__main__":
-    query_all()
-
+    mqm_query()
