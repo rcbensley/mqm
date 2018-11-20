@@ -1,0 +1,111 @@
+#!/usr/bin/env python3
+
+import os
+import sys
+import argparse
+import multiprocessing as mp
+import pymysql
+import prettytable as pt
+
+DEFAULT_MARIADB_PORT = 3306
+DEFAULTS_FILE = "~/.my.cnf"
+DEFAULTS_GROUP = "client"
+
+
+def args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--hosts', required=True,
+                        help=("Comma separated list of host:port"
+                              "E.g. --hosts=host:port,host"))
+    parser.add_argument('--defaults-file', default=DEFAULTS_FILE)
+    parser.add_argument('--defaults-group', default=DEFAULTS_GROUP)
+    parser.add_argument('--max-rows', default=50)
+    parser.add_argument('sql')
+    args = parser.parse_args()
+    if os.access(os.path.expanduser(args.defaults_file), os.R_OK):
+        return args
+    else:
+        sys.exit("I cannot read {}".format(args.defaults_file))
+
+
+def query_kwargs_list(args=args()):
+    """Each SQL statement, split by ';', is treated as a top level iterator.
+    We then iterate over each dict."""
+    all_sql_queries = []
+    host_list = list([j.split(':') for j in args.hosts.split(',')])
+    sql = args.sql[:-1] if args.sql.endswith(";") else args.sql
+    for s in sql.split(';'):
+        query_kwargs = []
+        for i in host_list:
+            hostname = i[0]
+            if len(i) == 1:
+                port = DEFAULT_MARIADB_PORT
+            else:
+                port = int(i[1])
+            query_kwargs.append({'sql': s,
+                'max_rows': int(args.max_rows),
+                'hostname': hostname,
+                'port': port,
+                'defaults_file': args.defaults_file,
+                'defaults_group': args.defaults_group})
+        all_sql_queries.append(query_kwargs)
+    return all_sql_queries
+
+
+def query(sql,
+        max_rows,
+        hostname,
+        port,
+        defaults_file=DEFAULTS_FILE,
+        defaults_group=DEFAULTS_GROUP):
+    db = pymysql.connect(host=hostname,
+                         port=port,
+                         read_default_file=defaults_file,
+                         read_default_group=defaults_group)
+    cur = db.cursor()
+    try:
+        cur.execute(sql)
+        desc = cur.description
+        if cur.rowcount > max_rows:
+            cur.arraysize = max_rows
+            rows = cur.fetchmany()
+        else:
+            rows = cur.fetchall()
+    finally:
+        cur.close()
+        db.close()
+
+    if not rows:
+        rows = ("", )
+
+    title = "{hostname}:{port}".format(hostname, port)
+    headers = (str(i[0]) for i in desc)
+    return (title, headers, rows)
+
+
+def print_table(title, headers, rows):
+    t = pt.PrettyTable(border=True, header=True)
+    t.set_style = pt.prettytable.PLAIN_COLUMNS
+    t.hrules = pt.prettytable.FRAME
+    t.title = title
+    t.field_names = headers
+    for row in rows:
+        t.add_row(row)
+    print(t)
+
+
+def query_pool(queries):
+    with mp.Pool() as pool:
+        r = pool.map(query, queries)
+    print(r)
+    return results
+
+
+def query_all(all_sql_queries=query_kwargs_list()):
+    for q in all_sql_queries:
+        query_pool(queries=q)
+
+
+if __name__ == "__main__":
+    query_all()
+

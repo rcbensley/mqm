@@ -1,0 +1,6 @@
+# Multi-Query-MariaDB
+Run multiple SQL queries against multiple MariaDB instances.
+
+```mqm --hosts=127.0.0.1,localhost:3307,my-db.net:3306,10.0.0.2:3308 "select @@version; select 1"```
+
+By default, mqm uses the ```[client]``` section in ```~/.my.cnf```.
