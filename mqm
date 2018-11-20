@@ -4,8 +4,8 @@ import os
 import sys
 import argparse
 import multiprocessing as mp
+from pprint import pprint as pp
 import pymysql
-import prettytable as pt
 
 DEFAULT_MARIADB_PORT = 3306
 DEFAULTS_FILE = "~/.my.cnf"
@@ -85,14 +85,15 @@ def query(sql,
 
 
 def print_table(title, headers, rows):
-    t = pt.PrettyTable(border=True, header=True)
-    t.set_style = pt.prettytable.PLAIN_COLUMNS
-    t.hrules = pt.prettytable.FRAME
-    t.title = title
-    t.field_names = headers
+    max_row_length = 32
+    u = "".join(list(["-" for _ in range(0, max_row_length)]))
+    print("{t}".format(t=title, u=u))
+    print("{}".format("\t".join(headers)))
+    f_rows = []
     for row in rows:
-        t.add_row(row)
-    print(t)
+        r = "{}".format("\t".join((str(c) for c in row)))
+        print(r)
+    print("")
 
 
 def query_pool(cfg):
@@ -109,3 +110,4 @@ def mqm_query(cfg=mqm_cfg()):
 
 if __name__ == "__main__":
     mqm_query()
+
