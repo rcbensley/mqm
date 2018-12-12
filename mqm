@@ -6,11 +6,15 @@ import argparse
 import multiprocessing as mp
 from pprint import pprint as pp
 import pymysql
+import asyncio
 
 
 DEFAULT_PORT = 3306
 DEFAULTS_FILE = "~/.my.cnf"
 DEFAULTS_GROUP = "client"
+TASK_LIST = []
+TASK_LOOP =  asyncio.get_event_loop()
+TASK_RESULTS = []
 
 
 class db:
@@ -18,8 +22,7 @@ class db:
             hostname: str,
             port: int=DEFAULT_PORT,
             read_default_file: str=DEFAULTS_FILE,
-            read_default_group: str=DEFAULTS_GROUP,
-            dict_results: bool=False):
+            read_default_group: str=DEFAULTS_GROUP):
         self.sql = (sql[:-1] if sql.endswith(";") else args.sql).split(";")
         self.hostname = hostname
         self.port = port
@@ -27,6 +30,7 @@ class db:
         self.read_default_group = read_default_group
         self.connect_kwargs = {'hostname': hostname, 'port': port, 'read_default_file': read_default_file, 'read_default_group': read_default_group}
         self.connect_kwargs['cursorclass'] = pymysql.cursors.DictCursor
+        self.desc_query_desc = []
         self.query_results = []
 
     def connect(self):
@@ -81,22 +85,32 @@ def parse_cli_args(args=cli_args()):
             h['port'] == host[1]
         h['host'] = host[0]
         db_kwargs.append(h)
-    return db_kwarg
+    return db_kwargs
 
 
-def mqm(db_args=parse_cli_args()):
-    with mp.Pool() as pool:
-        r = pool.starmap(mqm_query, db_args)
-    for t in r:
-        print_table(*t)
+def set_task_list(jobs=parse_cli_args()):
+    for i in jobs:
+        TASK_LIST.append(db(**i))
 
 
-def mqm_query(db_args):
-    my_db = db(**db_args)
-    my_db.query()
-    my_db.print_all_results()
+async def query(j):
+    j.query()
 
 
-if __name__ == "__main__":
-    mqm()
+def run_task_list(tasks=TASK_LIST, loop=TASK_LOOP):
+    i = iterator.map(query, tasks)
+    loop.run_until_complete(asyncio.gather(*tasks))
+    loop.close()
 
+
+def print_task_results(tasks=TASK_LIST):
+    for i in tasks:
+        i.print_all_results()
+
+
+def run():
+    run_task_list()
+    print_task_results()
+
+
+run()
