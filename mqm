@@ -13,22 +13,24 @@ DEFAULT_PORT = 3306
 DEFAULTS_FILE = "~/.my.cnf"
 DEFAULTS_GROUP = "client"
 TASK_LIST = []
-TASK_LOOP =  asyncio.get_event_loop()
-TASK_RESULTS = []
+TASK_LOOP = asyncio.get_event_loop()
 
 
 class db:
     def __init__(sql: str,
-            hostname: str,
-            port: int=DEFAULT_PORT,
-            read_default_file: str=DEFAULTS_FILE,
-            read_default_group: str=DEFAULTS_GROUP):
+                 hostname: str,
+                 port: int = DEFAULT_PORT,
+                 read_default_file: str = DEFAULTS_FILE,
+                 read_default_group: str = DEFAULTS_GROUP):
         self.sql = (sql[:-1] if sql.endswith(";") else args.sql).split(";")
         self.hostname = hostname
         self.port = port
         self.read_default_file = read_default_file
         self.read_default_group = read_default_group
-        self.connect_kwargs = {'hostname': hostname, 'port': port, 'read_default_file': read_default_file, 'read_default_group': read_default_group}
+        self.connect_kwargs = {'hostname': hostname,
+                               'port': port,
+                               'read_default_file': read_default_file,
+                               'read_default_group': read_default_group}
         self.connect_kwargs['cursorclass'] = pymysql.cursors.DictCursor
         self.desc_query_desc = []
         self.query_results = []
@@ -69,6 +71,7 @@ def cli_args():
     parser.add_argument('--defaults-group', default=DEFAULTS_GROUP)
     parser.add_argument('sql')
     args = parser.parse_args()
+    return args
 
 
 def parse_cli_args(args=cli_args()):
@@ -77,19 +80,22 @@ def parse_cli_args(args=cli_args()):
     db_kwargs = []
     for host in host_list:
         h = {'sql': args.sql,
-             'read_default_group': args.read_default_group,
-             'read_default_file': args.read_default_file}
+             'read_default_group': args.defaults_group,
+             'read_default_file': args.defaults_file}
         if len(host) == 1:
             h['port'] = DEFAULT_PORT
         else:
             h['port'] == host[1]
-        h['host'] = host[0]
+        h['hostname'] = host[0]
         db_kwargs.append(h)
     return db_kwargs
 
 
 def set_task_list(jobs=parse_cli_args()):
+    pp(jobs)
     for i in jobs:
+        pp(i)
+        pp(i['sql'])
         TASK_LIST.append(db(**i))
 
 
@@ -109,8 +115,10 @@ def print_task_results(tasks=TASK_LIST):
 
 
 def run():
+    set_task_list()
     run_task_list()
     print_task_results()
 
 
 run()
+
