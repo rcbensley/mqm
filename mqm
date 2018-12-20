@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 
-import os
-import sys
 import argparse
 import multiprocessing as mp
-from pprint import pprint as pp
 import pymysql
 
 DEFAULT_MARIADB_PORT = 3306
@@ -12,102 +9,67 @@ DEFAULTS_FILE = "~/.my.cnf"
 DEFAULTS_GROUP = "client"
 
 
-def mqm_args():
+def args():
     parser = argparse.ArgumentParser()
     parser.add_argument('--hosts', required=True,
                         help=("Comma separated list of host:port"
                               "E.g. --hosts=host:port,host"))
     parser.add_argument('--defaults-file', default=DEFAULTS_FILE)
     parser.add_argument('--defaults-group', default=DEFAULTS_GROUP)
-    parser.add_argument('--max-rows', default=50)
     parser.add_argument('sql')
     args = parser.parse_args()
-    if os.access(os.path.expanduser(args.defaults_file), os.R_OK):
-        return args
-    else:
-        sys.exit("I cannot read {}".format(args.defaults_file))
+    return [args.hosts, args.sql, args.defaults_file, args.defaults_group]
 
 
-def mqm_cfg(args=mqm_args()):
-    """Each SQL statement, split by ';', is treated as a top level iterator.
-    We then iterate over each dict."""
-    cfg = []
-    host_list = list([j.split(':') for j in args.hosts.split(',')])
-    sql = args.sql[:-1] if args.sql.endswith(";") else args.sql
-    for s in sql.split(';'):
-        query_cfg = []
-        for i in host_list:
-            hostname = i[0]
-            if len(i) == 1:
-                port = DEFAULT_MARIADB_PORT
-            else:
-                port = int(i[1])
-            query_cfg.append((s,
-                              int(args.max_rows),
-                              hostname,
-                              port,
-                              args.defaults_file,
-                              args.defaults_group))
-        cfg.append(query_cfg)
-    return cfg
+def queries(args: list = args()):
+    hosts = list([h.split(':') for h in args[0].split(',')])
+    sql = args[1][:-1] if args[1].endswith(";") else args[1]
+    sql = sql.split(";")
+    for h in hosts:
+        if len(h) == 1:
+            h.append(DEFAULT_MARIADB_PORT)
+    q = list([(h[0], int(h[1]), sql) for h in hosts])
+    return q
 
 
-def query(sql,
-          max_rows,
-          hostname,
-          port: int,
-          defaults_file=DEFAULTS_FILE,
-          defaults_group=DEFAULTS_GROUP):
+def query(hostname: str, port: int, sql: str):
+    title = "{hostname}:{port}".format(hostname=hostname, port=port)
+    local_results = []
     db = pymysql.connect(host=hostname,
                          port=port,
-                         read_default_file=defaults_file,
-                         read_default_group=defaults_group)
-    cur = db.cursor()
-    try:
-        cur.execute(sql)
-        desc = cur.description
-        if cur.rowcount > max_rows:
-            cur.arraysize = max_rows
-            rows = cur.fetchmany()
-        else:
+                         read_default_file=DEFAULTS_FILE,
+                         read_default_group=DEFAULTS_GROUP)
+    for s in sql:
+        try:
+            cur = db.cursor()
+            cur.execute(s)
+            desc = cur.description
             rows = cur.fetchall()
-    finally:
-        cur.close()
-        db.close()
-
-    if not rows:
-        rows = ("", )
-
-    title = "{hostname}:{port}".format(hostname=hostname,
-            port=port)
-    headers = list([str(i[0]) for i in desc])
-    return (title, headers, rows)
+        finally:
+            cur.close()
+        if rows:
+            headers = list([str(i[0]) for i in desc])
+            local_results.append([title, headers, rows])
+    db.close()
+    for r in local_results:
+        print_result(*r)
+    return
 
 
-def print_table(title, headers, rows):
+def print_result(title, headers, rows):
     max_row_length = 32
     u = "".join(list(["-" for _ in range(0, max_row_length)]))
     print("{t}".format(t=title, u=u))
     print("{}".format("\t".join(headers)))
-    f_rows = []
     for row in rows:
         r = "{}".format("\t".join((str(c) for c in row)))
         print(r)
-    print("")
 
 
-def query_pool(cfg):
+def mqm(q=queries()):
     with mp.Pool() as pool:
-        r = pool.starmap(query, cfg)
-    for t in r:
-        print_table(*t)
-
-
-def mqm_query(cfg=mqm_cfg()):
-    for i in cfg:
-        query_pool(cfg=i)
+        pool.starmap(query, q)
 
 
 if __name__ == "__main__":
-    mqm_query()
-
+    mqm()
