@@ -51,9 +51,7 @@ def query(hostname: str, port: int, sql: str):
             headers = list([str(i[0]) for i in desc])
             local_results.append([title, headers, rows])
     db.close()
-    for r in local_results:
-        print_result(*r)
-    return
+    return local_results
 
 
 def print_result(title, headers, rows):
@@ -64,11 +62,16 @@ def print_result(title, headers, rows):
     for row in rows:
         r = "{}".format("\t".join((str(c) for c in row)))
         print(r)
+    print("")
 
 
 def mqm(q=queries()):
     with mp.Pool() as pool:
-        pool.starmap(query, q)
+        results = pool.starmap(query, q)
+    for r in results:
+        for i in range(0, len(q[0][2])):
+            print_result(*r[i])
+
 
 
 if __name__ == "__main__":
